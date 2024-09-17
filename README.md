@@ -1,1 +1,1 @@
-This is scripts manger the scripts manager created by python so only perfectly run python scripts other codes scripts maybe run but not perfectly, So only execute pythonn scripts
+This is a script manager created in Python, designed to execute Python scripts perfectly. While it may run scripts in other languages, they might not work as reliably. Therefore, only Python scripts should be executed
