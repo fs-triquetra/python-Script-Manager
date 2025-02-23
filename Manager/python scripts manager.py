@@ -3,34 +3,26 @@ import subprocess
 import psutil
 import json
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 import platform
 
 # File to store script paths
 STATUS_FILE = 'script_status.json'
 
-# Dictionary to hold the scripts and their file paths
+# Global dictionaries to hold scripts and process IDs
 SCRIPTS = {}
-# Dictionary to hold process IDs for scripts
 PROCESS_IDS = {}
-# Dictionary to hold status labels for the GUI
-status_labels = {}
 
-# Load script paths from JSON file
 def load_statuses():
     if os.path.exists(STATUS_FILE):
         with open(STATUS_FILE, 'r') as f:
-            scripts = json.load(f)
-            return scripts
-    else:
-        return {}
+            return json.load(f)
+    return {}
 
-# Save script paths to JSON file
 def save_statuses():
     with open(STATUS_FILE, 'w') as f:
-        json.dump({name: {'path': data['path']} for name, data in SCRIPTS.items()}, f)
+        json.dump({name: {'path': data['path']} for name, data in SCRIPTS.items()}, f, indent=4)
 
-# Terminate any existing processes for the script
 def terminate_script(script_name):
     pid = PROCESS_IDS.get(script_name)
     if pid:
@@ -42,257 +34,217 @@ def terminate_script(script_name):
                 proc.kill()
             del PROCESS_IDS[script_name]
             return True
-        except psutil.NoSuchProcess:
-            del PROCESS_IDS[script_name]
-        except psutil.AccessDenied:
-            pass
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            if script_name in PROCESS_IDS:
+                del PROCESS_IDS[script_name]
     return False
 
-# Start a script in the background and suppress its output
 def start_script(script_name):
     script_path = SCRIPTS[script_name]['path']
     try:
         if platform.system() == "Windows":
-            process = subprocess.Popen(['python', script_path], creationflags=subprocess.CREATE_NO_WINDOW)
+            process = subprocess.Popen(['python', script_path],
+                                       creationflags=subprocess.CREATE_NO_WINDOW)
         else:
-            process = subprocess.Popen(['python3', script_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
+            process = subprocess.Popen(['python3', script_path],
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         PROCESS_IDS[script_name] = process.pid
-        # Update the status in-memory
-        update_status_label(script_name, "Running")
         save_statuses()
-        print(f"Script {script_name} was successfully started")
     except Exception as e:
         messagebox.showerror("Error", f"Failed to start {script_name}: {e}")
-        update_status_label(script_name, "Error")
 
-# Stop a running script
 def stop_script(script_name):
     if terminate_script(script_name):
-        # Update the status in-memory
-        update_status_label(script_name, "Stopped")
+        pass
     else:
-        update_status_label(script_name, "Error")
+        messagebox.showerror("Error", f"Failed to stop {script_name}")
     save_statuses()
 
-# Restart a script
 def restart_script(script_name):
     stop_script(script_name)
     start_script(script_name)
 
-# Stop all scripts
 def stop_all_scripts():
     for script_name in list(SCRIPTS.keys()):
         stop_script(script_name)
 
-# Start all scripts
 def start_all_scripts():
     for script_name in list(SCRIPTS.keys()):
         start_script(script_name)
 
-# Remove selected scripts
 def remove_scripts(script_names):
     for script_name in script_names:
+        stop_script(script_name)
         if script_name in SCRIPTS:
-            stop_script(script_name)  # Stop the script before removing
             del SCRIPTS[script_name]
-            if script_name in PROCESS_IDS:
-                del PROCESS_IDS[script_name]
-    save_statuses()
-    update_status_labels()
-
-# Display script manager popup
-def manage_scripts_popup():
-    global root
-    popup = tk.Toplevel(root)
-    popup.title("Manage Scripts")
-    popup.geometry("400x300")
-    popup.config(bg="black")
-
-    # Listbox to display available scripts
-    script_listbox = tk.Listbox(popup, selectmode=tk.MULTIPLE, bg="gray", fg="white", font=("Arial", 10))
-    script_listbox.pack(pady=10, fill="both", expand=True)
-
-    # Populate the listbox with numbered script names
-    for idx, script_name in enumerate(SCRIPTS, start=1):
-        script_listbox.insert(tk.END, f"{idx}. {script_name}")
-
-    # Function to delete selected scripts
-    def delete_selected_scripts():
-        selected_indices = script_listbox.curselection()
-        selected_scripts = [script_listbox.get(i).split('. ', 1)[1] for i in selected_indices]
-        if messagebox.askyesno("Confirm Delete", "Are you sure you want to delete the selected scripts?"):
-            remove_scripts(selected_scripts)
-            popup.destroy()
-
-    # Delete button
-    delete_button = tk.Button(popup, text="Delete Selected", command=delete_selected_scripts, bg="red", fg="white", font=("Arial", 10))
-    delete_button.pack(pady=10)
-
-    # Cancel button
-    cancel_button = tk.Button(popup, text="Cancel", command=popup.destroy, bg="gray", fg="white", font=("Arial", 10))
-    cancel_button.pack(pady=5)
-
-    # Populate the listbox with script names
-    for script_name in SCRIPTS:
-        script_listbox.insert(tk.END, script_name)
-
-    # Function to delete selected scripts
-    def delete_selected_scripts():
-        selected_indices = script_listbox.curselection()
-        selected_scripts = [script_listbox.get(i) for i in selected_indices]
-        if messagebox.askyesno("Confirm Delete", "Are you sure you want to delete the selected scripts?"):
-            remove_scripts(selected_scripts)
-            popup.destroy()
-
-    # Delete button
-    delete_button = tk.Button(popup, text="Delete Selected", command=delete_selected_scripts, bg="red", fg="white", font=("Arial", 10))
-    delete_button.pack(pady=10)
-
-    # Cancel button
-    cancel_button = tk.Button(popup, text="Cancel", command=popup.destroy, bg="gray", fg="white", font=("Arial", 10))
-    cancel_button.pack(pady=5)
-
-    def delete_selected_scripts():
-        selected_indices = script_listbox.curselection()
-        selected_scripts = [script_listbox.get(i) for i in selected_indices]
-        if messagebox.askyesno("Confirm Delete", "Are you sure you want to delete the selected scripts?"):
-            remove_scripts(selected_scripts)
-            popup.destroy()
-
-    delete_button = tk.Button(popup, text="Delete Selected", command=delete_selected_scripts, bg="red", fg="white", font=("Arial", 10))
-    delete_button.pack(pady=10)
-
-# Add a new script to the list
-def add_new_script():
-    file_path = filedialog.askopenfilename(
-        title="Select Script",
-        filetypes=[("Python Files", "*.py"), ("All Files", "*.*")]
-    )
-    
-    if file_path:
-        script_name = os.path.basename(file_path)
-        if script_name not in SCRIPTS:
-            folder = os.path.dirname(file_path)
-            SCRIPTS[script_name] = {'path': file_path}
-            add_script_to_gui(script_name, folder)
-
-# Add a script to the GUI
-def add_script_to_gui(script_name, folder):
-    script_row = tk.Frame(script_frame, bg="black")
-    script_row.pack(fill="x", padx=20, pady=5)
-
-    # Folder label
-    folder_label = tk.Label(script_row, text=folder, font=("Arial", 10), bg="black", fg="white", width=30, anchor="w")
-    folder_label.pack(side="left", padx=5)
-
-    # Script name label
-    script_label = tk.Label(script_row, text=script_name, font=("Arial", 10), bg="black", fg="white", width=30, anchor="w")
-    script_label.pack(side="left", padx=5)
-
-    # Status label
-    status_label = tk.Label(script_row, text="Stopped", font=("Arial", 10), width=10, bg="orange", fg="black")
-    status_label.pack(side="left", padx=5)
-    status_labels[script_name] = status_label
-
-    # Button frame for start and stop buttons
-    button_frame = tk.Frame(script_row, bg="black")
-    button_frame.pack(side="left", padx=5)
-
-    # Start button
-    start_button = tk.Button(button_frame, text="Start", font=("Arial", 10), bg="green", fg="white", command=lambda name=script_name: start_script(name))
-    start_button.pack(side="left", padx=5)
-
-    # Stop button
-    stop_button = tk.Button(button_frame, text="Stop", font=("Arial", 10), bg="red", fg="white", command=lambda name=script_name: stop_script(name))
-    stop_button.pack(side="left", padx=5)
-
-    update_status_labels()
-
-# Update status labels in the GUI
-def update_status_labels():
-    for script_name in SCRIPTS:
-        status = check_status(script_name)
-        update_status_label(script_name, status)
-
-# Update the status label of a single script
-def update_status_label(script_name, status):
-    if script_name in status_labels:
-        if status == "Running":
-            status_labels[script_name].config(text="Running", bg="green", fg="white")
-        elif status == "Stopped":
-            status_labels[script_name].config(text="Stopped", bg="orange", fg="black")
-        else:
-            status_labels[script_name].config(text="Error", bg="red", fg="white")
-
-# Check the status of a script
-def check_status(script_name):
-    pid = PROCESS_IDS.get(script_name)
-    if pid:
-        try:
-            proc = psutil.Process(pid)
-            if proc.is_running():
-                return "Running"
-        except psutil.NoSuchProcess:
-            # Process is no longer available
+        if script_name in PROCESS_IDS:
             del PROCESS_IDS[script_name]
-    return "Stopped"
+    save_statuses()
 
-# Create the GUI window
-def create_gui():
-    global root, script_frame
-    root = tk.Tk()
-    root.title("Script Manager")
-    root.geometry("800x600")
-    root.config(bg="black")
+# ------------------- GUI using ttk -------------------
+class ScriptManagerApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Script Manager")
+        self.geometry("900x600")
+        self.configure(bg="#2e2e2e")
+        self.style = ttk.Style(self)
+        self.style.theme_use("clam")
+        self.create_widgets()
+        self.load_scripts()
 
-    # Title
-    title_label = tk.Label(root, text="Script Manager", font=("Arial", 16), bg="black", fg="white")
-    title_label.pack(pady=10)
+    def create_widgets(self):
+        # Menu
+        menubar = tk.Menu(self)
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Add Script", command=self.add_script)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.quit)
+        menubar.add_cascade(label="File", menu=file_menu)
+        self.config(menu=menubar)
 
-    # Button frame for top buttons
-    top_button_frame = tk.Frame(root, bg="black")
-    top_button_frame.pack(pady=10, fill="x")
+        # Toolbar Frame for buttons
+        toolbar = tk.Frame(self, bg="#3e3e3e")
+        toolbar.pack(side="top", fill="x", padx=10, pady=5)
 
-    # Select script button
-    select_button = tk.Button(top_button_frame, text="Select Script", font=("Arial", 12), bg="blue", fg="white", command=add_new_script)
-    select_button.pack(side="left", padx=10)
+        add_btn = tk.Button(toolbar, text="Add Script", command=self.add_script,
+                            bg="#4CAF50", fg="white", font=("Arial", 10))
+        add_btn.pack(side="left", padx=5)
 
-    # Restart All button
-    restart_all_button = tk.Button(top_button_frame, text="Restart All", font=("Arial", 12), bg="yellow", fg="black", command=start_all_scripts)
-    restart_all_button.pack(side="left", padx=10)
+        start_all_btn = tk.Button(toolbar, text="Start All", command=start_all_scripts,
+                                  bg="#2196F3", fg="white", font=("Arial", 10))
+        start_all_btn.pack(side="left", padx=5)
 
-    # Stop All button
-    stop_all_button = tk.Button(top_button_frame, text="Stop All", font=("Arial", 12), bg="red", fg="white", command=stop_all_scripts)
-    stop_all_button.pack(side="left", padx=10)
+        stop_all_btn = tk.Button(toolbar, text="Stop All", command=stop_all_scripts,
+                                 bg="#f44336", fg="white", font=("Arial", 10))
+        stop_all_btn.pack(side="left", padx=5)
 
-    # Remove button
-    remove_button = tk.Button(top_button_frame, text="Remove", font=("Arial", 12), bg="gray", fg="white", command=manage_scripts_popup)
-    remove_button.pack(side="left", padx=10)
+        remove_btn = tk.Button(toolbar, text="Remove Script", command=self.remove_selected_scripts,
+                               bg="#9E9E9E", fg="white", font=("Arial", 10))
+        remove_btn.pack(side="left", padx=5)
 
-    # Frame to hold the scripts
-    script_frame = tk.Frame(root, bg="black")
-    script_frame.pack(pady=10, fill="both", expand=True)
+        refresh_btn = tk.Button(toolbar, text="Refresh Status", command=self.refresh_status,
+                                bg="#00BCD4", fg="white", font=("Arial", 10))
+        refresh_btn.pack(side="left", padx=5)
 
-    # Refresh button to update statuses
-    refresh_button = tk.Button(root, text="Refresh Status", font=("Arial", 12), bg="cyan", fg="black", command=update_status_labels)
-    refresh_button.pack(pady=10)
+        # Treeview for scripts
+        columns = ("Script", "Folder", "Status")
+        self.tree = ttk.Treeview(self, columns=columns, show="headings", selectmode="extended")
+        self.tree.heading("Script", text="Script")
+        self.tree.heading("Folder", text="Folder")
+        self.tree.heading("Status", text="Status")
+        self.tree.column("Script", width=200)
+        self.tree.column("Folder", width=400)
+        self.tree.column("Status", width=100, anchor="center")
+        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
 
-    # Load existing scripts into GUI
-    for script_name, data in SCRIPTS.items():
-        folder = os.path.dirname(data['path'])
-        add_script_to_gui(script_name, folder)
+        # Bind right-click for context menu and double-click for toggle action
+        self.tree.bind("<Button-3>", self.show_context_menu)
+        self.tree.bind("<Double-1>", self.on_double_click)
 
-    root.mainloop()
+        # Right-click context menu
+        self.context_menu = tk.Menu(self, tearoff=0)
+        self.context_menu.add_command(label="Start", command=lambda: self.context_action("start"))
+        self.context_menu.add_command(label="Stop", command=lambda: self.context_action("stop"))
+        self.context_menu.add_command(label="Restart", command=lambda: self.context_action("restart"))
 
-# Main function to launch the GUI
-def main():
-    global SCRIPTS
-    # Load existing script paths from file
-    SCRIPTS = load_statuses()
+        # Status Bar
+        self.status_var = tk.StringVar()
+        self.status_var.set("Welcome to Script Manager")
+        status_bar = tk.Label(self, textvariable=self.status_var, bd=1, relief="sunken",
+                              anchor="w", bg="#404040", fg="white")
+        status_bar.pack(side="bottom", fill="x")
 
-    # Create and run the GUI
-    create_gui()
+    def load_scripts(self):
+        global SCRIPTS
+        SCRIPTS = load_statuses()
+        self.refresh_tree()
+
+    def refresh_tree(self):
+        # Clear the tree view and insert updated scripts
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        for script_name, data in SCRIPTS.items():
+            folder = os.path.dirname(data['path'])
+            status = self.get_script_status(script_name)
+            self.tree.insert("", "end", iid=script_name, values=(script_name, folder, status))
+
+    def get_script_status(self, script_name):
+        pid = PROCESS_IDS.get(script_name)
+        if pid:
+            try:
+                proc = psutil.Process(pid)
+                if proc.is_running():
+                    return "Running"
+            except psutil.NoSuchProcess:
+                if script_name in PROCESS_IDS:
+                    del PROCESS_IDS[script_name]
+        return "Stopped"
+
+    def refresh_status(self):
+        for script in SCRIPTS:
+            status = self.get_script_status(script)
+            self.tree.set(script, column="Status", value=status)
+        self.status_var.set("Status refreshed.")
+
+    def add_script(self):
+        file_path = filedialog.askopenfilename(
+            title="Select Script",
+            filetypes=[("Python Files", "*.py"), ("All Files", "*.*")]
+        )
+        if file_path:
+            script_name = os.path.basename(file_path)
+            if script_name in SCRIPTS:
+                messagebox.showinfo("Info", "Script already added.")
+            else:
+                SCRIPTS[script_name] = {'path': file_path}
+                save_statuses()
+                self.refresh_tree()
+                self.status_var.set(f"Added {script_name}")
+
+    def remove_selected_scripts(self):
+        selected_items = self.tree.selection()
+        if not selected_items:
+            messagebox.showinfo("Info", "No script selected.")
+            return
+        confirm = messagebox.askyesno("Confirm", "Are you sure you want to remove the selected scripts?")
+        if confirm:
+            for script_name in selected_items:
+                remove_scripts([script_name])
+            self.refresh_tree()
+            self.status_var.set("Selected scripts removed.")
+
+    def show_context_menu(self, event):
+        selected_item = self.tree.identify_row(event.y)
+        if selected_item:
+            self.tree.selection_set(selected_item)
+            self.context_menu.post(event.x_root, event.y_root)
+
+    def context_action(self, action):
+        selected_items = self.tree.selection()
+        if not selected_items:
+            return
+        for script_name in selected_items:
+            if action == "start":
+                start_script(script_name)
+            elif action == "stop":
+                stop_script(script_name)
+            elif action == "restart":
+                restart_script(script_name)
+        self.refresh_tree()
+        self.status_var.set(f"Action '{action}' executed on selected scripts.")
+
+    def on_double_click(self, event):
+        # Toggle start/stop on double-click based on current status
+        item = self.tree.identify_row(event.y)
+        if item:
+            current_status = self.tree.set(item, "Status")
+            if current_status == "Running":
+                stop_script(item)
+            else:
+                start_script(item)
+            self.refresh_tree()
 
 if __name__ == "__main__":
-    main()
+    app = ScriptManagerApp()
+    app.mainloop()
